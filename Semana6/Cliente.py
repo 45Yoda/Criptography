@@ -1,5 +1,7 @@
 # Código baseado em https://docs.python.org/3.6/library/asyncio-stream.html#tcp-echo-client-using-streams
 import asyncio
+from Crypto.Cipher import AES
+from Crypto import Random
 
 class Client:
     """ Classe que implementa a funcionalidade de um CLIENTE. """
@@ -34,7 +36,11 @@ def tcp_echo_client(loop=None):
     while len(data)>0:
         if msg:
             msg = b'M' + msg
-            writer.write(msg)
+            iv = Random.new().read(AES.block_size)
+            key = hashlib.sha256(key.encode()).digest()
+            cypher = AES.new(key,AES.MODE.CBC,iv)
+            cypher_text = cypher.encrypt(msg)
+            writer.write(cypher_text)
             if msg[:1] == b'E': break
             data = yield from reader.read(100)
             if len(data)>0 :
