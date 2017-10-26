@@ -29,7 +29,9 @@ def handle_echo(reader, writer):
         res = srvwrk.respond(data[1:], addr)
         if not res: break
         res = b'M'+res
-        writer.write(res)
+        cyphertext = AES.new(key,AES.MODE_CBC)
+        text = cypher.decrypt(cyphertext)
+        writer.write(text)
         yield from writer.drain()
         data = yield from reader.read(100)
     print("[%d]" % srvwrk.id)
