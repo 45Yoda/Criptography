@@ -25,14 +25,10 @@ class ServerWorker(object):
 
 
 def handle_echo(reader, writer):
-	global conn_cnt
-	conn_cnt +=1
-	srvwrk = ServerWorker(conn_cnt)
-	data = yield from reader.read(100)
-
-    parameters = dh.generate_parameters(generator=2,key_size=2048,backend=default_backend())
-    private_keyA = parameters.generate_private_key()
-    public_keyA = private_keyA.public_key()
+    global conn_cnt
+    conn_cnt +=1
+    srvwrk = ServerWorker(conn_cnt)
+    data = yield from reader.read(100)
 
     # envia a public_keyA
 
@@ -40,43 +36,58 @@ def handle_echo(reader, writer):
     # metemos numa hash
     # e geramos por exemplo um parametro
 
-    """
-    peer_public_key = parameters.generate_private_key().public_key()
-    shared_key = private_key.exchange(peer_public_key)
-    private_key_2 = parameters.generate_private_key()
-    peer_public_key_2 = parameters.generate_private_key().public_key()
-    shared_key_2 = private_key_2.exchange(peer_public_key_2) 
-    """
+    while True:
 
-	while True:
-		if data[:1]==b'E': break
-		if not data: continue
-		# Get the data from the variable to start decryption
-		"""nonce = data[:16]
-		tag = data[16:32]
-		salt = data[32:48]
-		ciphertext = data[48:]
-		# Get key from PBKDF2
-		key = passwd(salt)
-		# AES cipher
-		cipher = AES.new(key,AES.MODE_EAX,nonce=nonce)
-		# Decryption
-		plaintext = cipher.decrypt(ciphertext)
-		try:
-			# Verify if the message has not been corrupted
-			cipher.verify(tag)
-			addr = writer.get_extra_info('peername')
-			res = srvwrk.respond(plaintext[1:], addr)
-			if not res: break
-			res = b'M'+res
-			writer.write(res)
-			yield from writer.drain()
-			data = yield from reader.read(100)
-		except ValueError:
-			continue
         """
-	print("[%d]" % srvwrk.id)
-	writer.close()
+        p = int.from_bytes(data[1:129], byteorder='big')
+        g = 2
+        pn = dh.DHParameterNumbers(p,g)
+        parameters = pn.parameters(default_backend())
+        private_key = dh.DHPublicNumbers(y,pn)
+        public_key = private_key.public_key(default.backend())
+
+        writer.write(str(public_key).encode())
+        yield from writer.drain()
+
+        data = yield from reader.read(100)
+        """
+
+        parameters  = dh.generate_parameters(generator=2, key_size=512, backend=default_backend())
+        paramNums   = parameters.parameter_numbers()
+        privateKey  = parameters.generate_private_key()
+        publicKey = privateKey.public_key()
+
+        #fazer o writer.write( dos parametros p , g ,y)
+
+    """
+        if data[:1]==b'E': break
+        if not data: continue
+        # Get the data from the variable to start decryption
+        nonce = data[:16]
+        tag = data[16:32]
+        salt = data[32:48]
+        ciphertext = data[48:]
+        # Get key from PBKDF2
+        key = passwd(salt)
+        # AES cipher
+        cipher = AES.new(key,AES.MODE_EAX,nonce=nonce)
+        # Decryption
+        plaintext = cipher.decrypt(ciphertext)
+        try:
+            # Verify if the message has not been corrupted
+            cipher.verify(tag)
+            addr = writer.get_extra_info('peername')
+            res = srvwrk.respond(plaintext[1:], addr)
+            if not res: break
+            res = b'M'+res
+            writer.write(res)
+            yield from writer.drain()
+            data = yield from reader.read(100)
+        except ValueError:
+            continue
+    print("[%d]" % srvwrk.id)
+    """
+    writer.close()
 
 
 def run_server():

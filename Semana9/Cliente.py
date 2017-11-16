@@ -27,11 +27,11 @@ class Client:
         return new
 
 
-
+"""
 def diffieClient():
     parameters = load_pem_parameters(2048)
     publicKeyA = load_pem_public_key(2048)
-
+"""
 
 
 
