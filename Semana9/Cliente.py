@@ -1,12 +1,11 @@
-# Código baseado em https://docs.python.org/3.6/library/asyncio-stream.html#tcp-echo-client-using-streams
 import asyncio
 import os
 import sys
+import binascii
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.asymmetric import dh
 
 class Client:
@@ -27,20 +26,29 @@ class Client:
         return new
 
 
-"""
-def diffieClient():
-    parameters = load_pem_parameters(2048)
-    publicKeyA = load_pem_public_key(2048)
-"""
 
-
-
+@asyncio.coroutine
 def tcp_echo_client(loop=None):
     if loop is None:
         loop = asyncio.get_event_loop()
 
-    reader, writer = yield from asyncio.open_connection('127.0.0.1', 9999,
+    reader, writer = yield from asyncio.open_connection('127.0.0.1', 8888,
                                                         loop=loop)
+
+    a_pr, msg_pk, private_key = dhPK()
+
+    writer.write(b'K')
+    data = yield from reader.read(100)
+    writer.write(msg_pk[0])
+    data = yield from reader.read(100)
+    writer.write(msg_pk[1])
+    data = yield from reader.read(100)
+    writer.write(msg_pk[2])
+    data = yield from reader.read(100)
+
+    if len(data) > 0:
+        shared_key = dhShared(a_pr, data, private_key)
+        print(shared_key)
 
     data = b'S'
     client = Client("Cliente 1")
@@ -48,17 +56,7 @@ def tcp_echo_client(loop=None):
     while len(data)>0:
         if msg:
             msg = b'M' + msg
-            # Key created with PBKDF2
-            key, salt = passwd()
-            # Encryption with AES block cipher
-            cipher = AES.new(key, AES.MODE_EAX)
-            nonce = cipher.nonce
-            # Encrypt and creates a tag for later verify if the message has not been corrupted
-            ciphertext, tag = cipher.encrypt_and_digest(msg)
-            # Nonce, tag and salt saved along with the encrypted message to send to the server
-            text = nonce + tag + salt + ciphertext
-            writer.write(text)
-            # End of encryption
+            writer.write(msg)
             if msg[:1] == b'E': break
             data = yield from reader.read(100)
             if len(data)>0 :
@@ -76,23 +74,30 @@ def run_client():
     loop = asyncio.get_event_loop()
     loop.run_until_complete(tcp_echo_client())
 
-def passwd():
-    backend = default_backend()
-    salt = os.urandom(16)
-    # PBKDF2 derivation function
-    kdf = PBKDF2HMAC(
-    algorithm=hashes.SHA256(),
-    length=32,
-    salt=salt,
-    iterations=100000,
-    backend=backend
-    )
-    # pass-phrase
-    password = b"Some password"
-    # Encrypt password with PBKDF2
-    key = kdf.derive(password)
-    # Return key and salt
-    return key, salt
+def dhPK():
+    parameters = dh.generate_parameters(generator=2, key_size=512, backend=default_backend())
+
+    a_private_key = parameters.generate_private_key()
+    a_peer_public_key = a_private_key.public_key()
+
+    a_pn = a_peer_public_key.public_numbers()
+    a_pr = parameters.parameter_numbers()
+    a_y = a_pn.y
+    a_p = a_pr.p
+    a_g = a_pr.g
+
+    num = [a_y.to_bytes(100, 'big'), a_p.to_bytes(100, 'big'), a_g.to_bytes(100, 'big')]
+
+    msg2 = num 
+
+    return a_pr, msg2, a_private_key
+
+def dhShared(a_pr, data, private_key):
+    b_public_numbers = dh.DHPublicNumbers(int.from_bytes(data, 'big'), a_pr)
+    b_public_key = b_public_numbers.public_key(default_backend())
+
+    shared_key = private_key.exchange(b_public_key)
+    return shared_key
 
 
 run_client()
