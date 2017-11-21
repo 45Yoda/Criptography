@@ -1,9 +1,7 @@
 import asyncio
 import os
 import sys
-import binascii
-from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
+from Crypto.Cipher import Salsa20
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dh
@@ -32,35 +30,36 @@ def tcp_echo_client(loop=None):
     if loop is None:
         loop = asyncio.get_event_loop()
 
-    reader, writer = yield from asyncio.open_connection('127.0.0.1', 8888,
+    reader, writer = yield from asyncio.open_connection('127.0.0.1', 8887,
                                                         loop=loop)
-
+    # Envio e criação do protocolo de chaves Diffie Hellman
+    # ---------------------------------
     a_pr, msg_pk, private_key = dhPK()
 
-    writer.write(b'K')
+    writer.write(b'y' + msg_pk[0])
     data = yield from reader.read(100)
-    writer.write(msg_pk[0])
+    writer.write(b'p' + msg_pk[1])
     data = yield from reader.read(100)
-    writer.write(msg_pk[1])
-    data = yield from reader.read(100)
-    writer.write(msg_pk[2])
+    writer.write(b'g' + msg_pk[2])
     data = yield from reader.read(100)
 
-    if len(data) > 0:
-        shared_key = dhShared(a_pr, data, private_key)
-        print(shared_key)
-
+    if data[:1]==b'K':
+        servidor_public_key = int.from_bytes(data[1:], 'big')
+        shared_key = dhShared(a_pr, servidor_public_key, private_key)
+    # ---------------------------------
     data = b'S'
     client = Client("Cliente 1")
     msg = client.initmsg()
     while len(data)>0:
         if msg:
+            cipher = Salsa20.new(key=shared_key)
+            msg = cipher.nonce + cipher.encrypt(msg)
             msg = b'M' + msg
             writer.write(msg)
             if msg[:1] == b'E': break
             data = yield from reader.read(100)
             if len(data)>0 :
-                msg = client.respond(data[1:])
+                msg = client.respond(cipher.decrypt(data[1:]))
             else:
                 break
         else:
@@ -86,17 +85,17 @@ def dhPK():
     a_p = a_pr.p
     a_g = a_pr.g
 
-    num = [a_y.to_bytes(100, 'big'), a_p.to_bytes(100, 'big'), a_g.to_bytes(100, 'big')]
+    num = [a_y.to_bytes(99, 'big'), a_p.to_bytes(99, 'big'), a_g.to_bytes(99, 'big')]
 
-    msg2 = num 
+    return a_pr, num, a_private_key
 
-    return a_pr, msg2, a_private_key
-
-def dhShared(a_pr, data, private_key):
-    b_public_numbers = dh.DHPublicNumbers(int.from_bytes(data, 'big'), a_pr)
+def dhShared(a_pr, servidor_public_key, private_key):
+    b_public_numbers = dh.DHPublicNumbers(servidor_public_key, a_pr)
     b_public_key = b_public_numbers.public_key(default_backend())
 
     shared_key = private_key.exchange(b_public_key)
+    shared_key = shared_key[:32]
+
     return shared_key
 
 
