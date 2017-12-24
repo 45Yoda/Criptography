@@ -20,15 +20,15 @@ sua usabilidade.
 ## Características
 
 A biblioteca NaCl apresenta as seguintes caraterísticas:
-### Implementações de alta velocidade --> possui a capacidade de fornecer de velocidades de registo para cada um das suas operações criptográficas.
-### Sintonização automática do CPU --> a NaCl suporta múltiplas implementações da mesma função.
-### Seleção especializada de primitivas padrão --> obriga o programador a especificar todas as opções de primitivas criptográficas. Ex: "assine a mensagem com RSA de 4096 bits com SHa-256".
-### Primitivas de alto nível --> a NaCl fornece uma função cripto_box simples que faz todo o processo de autenticação e criptográfico em um único passo. A função leva a chave secreta do emissor, a chave pública do recetor e uma mensagem, e produz um texto cifrado autenticado. Todos os objetos são representados no formato de fio, como sequências de bytes para transmissão; a função crypto_box gera automaticamente todas as conversões, inicializações, etc.
+* Implementações de alta velocidade --> possui a capacidade de fornecer de velocidades de registo para cada um das suas operações criptográficas.
+* Sintonização automática do CPU --> a NaCl suporta múltiplas implementações da mesma função.
+* Seleção especializada de primitivas padrão --> obriga o programador a especificar todas as opções de primitivas criptográficas. Ex: "assine a mensagem com RSA de 4096 bits com SHa-256".
+* Primitivas de alto nível --> a NaCl fornece uma função cripto_box simples que faz todo o processo de autenticação e criptográfico em um único passo. A função leva a chave secreta do emissor, a chave pública do recetor e uma mensagem, e produz um texto cifrado autenticado. Todos os objetos são representados no formato de fio, como sequências de bytes para transmissão; a função crypto_box gera automaticamente todas as conversões, inicializações, etc.
 Outra virtude é que a NaCl não está ligada ao hash-sign-encrypt-etc e por isso apresenta soluções mais rápidas pelo facto de reutilizarem os segredos partilhados pelo protocolo de Diffie-Hellman.
-### Nenhum índice de matriz depende de dados --> por questões de desempenho e segurança a cache do CPU não guarda informações secretas nos seus endereços.
-### Não possui alocação de memória dinâmica --> é destinada ao uso em ambientes que não podem garantir a disponibilidade de grandes quantidades de armazenamento na stack, mas que, no
+* Nenhum índice de matriz depende de dados --> por questões de desempenho e segurança a cache do CPU não guarda informações secretas nos seus endereços.
+* Não possui alocação de memória dinâmica --> é destinada ao uso em ambientes que não podem garantir a disponibilidade de grandes quantidades de armazenamento na stack, mas que, no
 entanto dependem dos seus cálculos criptográficos para continuarem a trabalhar. 
-### Sem restrições de direitos de autor --> toda a biblioteca é de domínio público.
+* Sem restrições de direitos de autor --> toda a biblioteca é de domínio público.
 
 
 
