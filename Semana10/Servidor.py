@@ -7,7 +7,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
-
+from cryptography.hazmat.primitives.asymmetric import padding
 
 conn_cnt = 0
 
@@ -36,19 +36,34 @@ def handle_echo(reader, writer):
         # Receber os dados para o protocolo Diffie Hellman
         # -------------------------------------
         if data[:1]==b'y':
-            y = int.from_bytes(data[1:], 'big')
+            y = data[1:]
             writer.write(b'OK')
+            data = yield from reader.read(257)
+            if data[:1]==b'y':
+                sig_y = data[1:]
+                sig_verify(sig_y, y)
             continue
 
         if data[:1]==b'p':
-            p = int.from_bytes(data[1:], 'big')
+            p = data[1:]
             writer.write(b'OK')
+            data = yield from reader.read(257)
+            if data[:1]==b'p':
+                sig_p = data[1:]
+                sig_verify(sig_p, p)
             continue
 
         if data[:1]==b'g':
-            g = int.from_bytes(data[1:], 'big')
-            privateKey , shared_key = dhPK(y, g, p)
-            writer.write(b'K' + b_y.to_bytes(99, 'big'))
+            g = data[1:]
+            data = yield from reader.read(257)
+            if data[:1]==b'g':
+                sig_g = data[1:]
+                sig_verify(sig_g, g)
+
+            shared_key, b_y = dhPK(int.from_bytes(y, 'big'), int.from_bytes(g, 'big'), int.from_bytes(p, 'big'))
+            sig_server_y = sig_create(b_y)
+            writer.write(b'K' + b_y)
+            writer.write(b'K' + sig_server_y)
             continue
         # -------------------------------------
         if not data: continue
@@ -56,15 +71,7 @@ def handle_echo(reader, writer):
         nonce = data[1:9]
         cipher = Salsa20.new(key=shared_key, nonce=nonce)
         msg = cipher.decrypt(data[9:])
-        signature = privateKey.sign(
-            msg,
-            padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-            ),
-            hashes.SHA256()
-        ) 
-        res = srvwrk.respond(signature, addr)
+        res = srvwrk.respond(msg, addr)
         if not res: break
         res = b'M'+cipher.encrypt(res)
         writer.write(res)
@@ -74,6 +81,8 @@ def handle_echo(reader, writer):
 
 
 def run_server():
+    # Criar assiatura RSA
+    sig()
     loop = asyncio.get_event_loop()
     coro = asyncio.start_server(handle_echo, '127.0.0.1', 8887, loop=loop)
     server = loop.run_until_complete(coro)
@@ -94,19 +103,8 @@ def dhPK(y, g, p):
     parameters = parameters_numbers.parameters(default_backend())
 
     b_private_key = parameters.generate_private_key()
-    b_public_key = b_private_key.public_key()
+    b_peer_public_key = b_private_key.public_key()
 
-    pem = b_public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo)
-
-    #pem.splitlines()[0]
-
-    return b_private_key, b_public_key
-
-
-    
-"""
     a_public_numbers = dh.DHPublicNumbers(y, parameters_numbers)
     a_public_key = a_public_numbers.public_key(default_backend())
     shared_key = b_private_key.exchange(a_public_key)
@@ -116,8 +114,70 @@ def dhPK(y, g, p):
 
     shared_key = shared_key[:32]
 
-    return shared_key, b_y
-"""
-     
+    return shared_key, b_y.to_bytes(99, 'big')
+
+def sig_verify(signature, message):
+        
+    with open("pubkey_Cliente.pem", "rb") as key_file:
+        public_key = serialization.load_pem_public_key(
+            key_file.read(),
+            backend=default_backend()
+        )
+
+    public_key.verify(
+        signature,
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+
+def sig():
+    private_key = rsa.generate_private_key(
+         public_exponent=65537,
+         key_size=2048,
+         backend=default_backend()
+    )
+
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    f = open('pkey_Servidor.pem','wb')
+    f.write(pem)
+    f.close()
+
+    public_key = private_key.public_key()
+
+    pem = public_key.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+    f = open('pubkey_Servidor.pem','wb')
+    f.write(pem)
+    f.close()
+
+def sig_create(msg):
+    with open("pkey_Servidor.pem", 'rb') as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,
+            backend=default_backend()
+        )
+
+    sig_y = private_key.sign(
+                            msg,
+                            padding.PSS(
+                                mgf=padding.MGF1(hashes.SHA256()),
+                                salt_length=padding.PSS.MAX_LENGTH
+                                       ),
+                            hashes.SHA256()
+                            )
+
+    return sig_y
 
 run_server()

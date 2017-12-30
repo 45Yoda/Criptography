@@ -5,6 +5,9 @@ from Crypto.Cipher import Salsa20
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import padding
 
 class Client:
     """ Classe que implementa a funcionalidade de um CLIENTE. """
@@ -23,8 +26,6 @@ class Client:
         new = input().encode()
         return new
 
-
-
 @asyncio.coroutine
 def tcp_echo_client(loop=None):
     if loop is None:
@@ -32,20 +33,28 @@ def tcp_echo_client(loop=None):
 
     reader, writer = yield from asyncio.open_connection('127.0.0.1', 8887,
                                                         loop=loop)
-    # Envio e criação do protocolo de chaves Diffie Hellman
+    # Envio e criação do protocolo de chaves Diffie Hellman e assinatura RSA
     # ---------------------------------
     a_pr, msg_pk, private_key = dhPK()
+    sig_pk = sig_create(msg_pk)
 
     writer.write(b'y' + msg_pk[0])
+    writer.write(b'y' + sig_pk[0])
     data = yield from reader.read(100)
     writer.write(b'p' + msg_pk[1])
+    writer.write(b'p' + sig_pk[1])
     data = yield from reader.read(100)
     writer.write(b'g' + msg_pk[2])
+    writer.write(b'g' + sig_pk[2])
     data = yield from reader.read(100)
 
     if data[:1]==b'K':
-        servidor_public_key = int.from_bytes(data[1:], 'big')
-        shared_key = dhShared(a_pr, servidor_public_key, private_key)
+        servidor_public_key = data[1:]
+        data = yield from reader.read(257)
+        if data[:1]==b'K':
+            sig_verify(data[1:], servidor_public_key)
+
+        shared_key = dhShared(a_pr, int.from_bytes(servidor_public_key, 'big'), private_key)
     # ---------------------------------
     data = b'S'
     client = Client("Cliente 1")
@@ -70,6 +79,8 @@ def tcp_echo_client(loop=None):
 
 
 def run_client():
+    # Criar assiatura RSA
+    sig()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(tcp_echo_client())
 
@@ -77,7 +88,7 @@ def dhPK():
     parameters = dh.generate_parameters(generator=2, key_size=512, backend=default_backend())
 
     a_private_key = parameters.generate_private_key()
-    a_public_key = a_private_key.public_key()
+    a_peer_public_key = a_private_key.public_key()
 
     a_pn = a_peer_public_key.public_numbers()
     a_pr = parameters.parameter_numbers()
@@ -97,6 +108,90 @@ def dhShared(a_pr, servidor_public_key, private_key):
     shared_key = shared_key[:32]
 
     return shared_key
+
+def sig_verify(signature, message):
+        
+    with open("pubkey_Servidor.pem", "rb") as key_file:
+        public_key = serialization.load_pem_public_key(
+            key_file.read(),
+            backend=default_backend()
+        )
+
+    public_key.verify(
+        signature,
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+
+def sig():
+    private_key = rsa.generate_private_key(
+         public_exponent=65537,
+         key_size=2048,
+         backend=default_backend()
+    )
+
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    f = open('pkey_Cliente.pem','wb')
+    f.write(pem)
+    f.close()
+
+    public_key = private_key.public_key()
+
+    pem = public_key.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+    f = open('pubkey_Cliente.pem','wb')
+    f.write(pem)
+    f.close()
+
+def sig_create(msg_pk):
+    with open("pkey_Cliente.pem", 'rb') as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,
+            backend=default_backend()
+        )
+
+    sig_y = private_key.sign(
+                            msg_pk[0],
+                            padding.PSS(
+                                mgf=padding.MGF1(hashes.SHA256()),
+                                salt_length=padding.PSS.MAX_LENGTH
+                                       ),
+                            hashes.SHA256()
+                            )
+
+    sig_p = private_key.sign(
+                            msg_pk[1],
+                            padding.PSS(
+                                mgf=padding.MGF1(hashes.SHA256()),
+                                salt_length=padding.PSS.MAX_LENGTH
+                                       ),
+                            hashes.SHA256()
+                            )
+
+    sig_g = private_key.sign(
+                            msg_pk[2],
+                            padding.PSS(
+                                mgf=padding.MGF1(hashes.SHA256()),
+                                salt_length=padding.PSS.MAX_LENGTH
+                                       ),
+                            hashes.SHA256()
+                            )
+
+    sig_pk = [sig_y, sig_p, sig_g]
+
+    return sig_pk
 
 
 run_client()
